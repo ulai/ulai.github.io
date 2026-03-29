@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>TFJS Driver Fatigue + Visuals</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #121212; color: white; margin: 0; padding: 10px; }
+        #container { position: relative; display: inline-block; }
+        video { transform: scaleX(-1); border-radius: 10px; }
+        canvas { position: absolute; top: 0; left: 0; transform: scaleX(-1); }
+        .controls { background: #222; padding: 15px; border-radius: 10px; margin: 10px auto; width: fit-content; }
+        #status { font-size: 1.8rem; font-weight: bold; margin: 15px; color: #00ff00; }
+        .alarm { color: #ff3333 !important; }
+    </style>
+</head>
+<body>
+    <h1>Fatigue Monitor 2.0</h1>
+    
+    <div class="controls">
+        <button id="startBtn" style="padding:10px 20px; cursor:pointer;">System Starten</button>
+        <div style="margin-top:10px;">
+            <label>Alarm-Verzögerung (Frames): <span id="frameVal">20</span></label><br>
+            <input type="range" id="frameRange" min="5" max="60" value="20">
+        </div>
+    </div>
+
+    <div id="container">
+        <video id="webcam" autoplay playsinline width="640" height="480"></video>
+        <canvas id="output_canvas" width="640" height="480"></canvas>
+    </div>
+    <div id="status">Bereit...</div>
+
+    <script type="module">
+        import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs';
+
+        const video = document.getElementById("webcam");
+        const canvas = document.getElementById("output_canvas");
+        const ctx = canvas.getContext("2d");
+        const statusDiv = document.getElementById("status");
+        const startBtn = document.getElementById("startBtn");
+        const frameRange = document.getElementById("frameRange");
+        const frameVal = document.getElementById("frameVal");
+
+        let faceLandmarker, audioCtx, alarmOsc, lastVideoTime = -1, closedFrames = 0;
+        
+        // Landmark Indizes für präzise EAR-Messung
+        const L_IDX = [362, 385, 387, 263, 373, 380]; 
+        const R_IDX = [33, 160, 158, 133, 153, 144];
+
+        async function init() {
+            startBtn.disabled = true;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+						const fileset = await FilesetResolver.forVisionTasks(
+								"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+						);
+
+						faceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
+								baseOptions: { 
+										modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+								},
+								runningMode: "VIDEO", 
+								numFaces: 1
+						});
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            video.addEventListener("loadeddata", () => requestAnimationFrame(predict));
+        }
+
+        function drawPoints(landmarks, indices, color) {
+            ctx.fillStyle = color;
+            indices.forEach(idx => {
+                const p = landmarks[idx];
+                ctx.beginPath();
+                ctx.arc(p.x * canvas.width, p.y * canvas.height, 2, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+        }
+
+        function getEAR(l, i) {
+            const d = (p1, p2) => Math.sqrt(Math.pow(p1.x-p2.x,2) + Math.pow(p1.y-p2.y,2));
+            return (d(l[i[1]], l[i[5]]) + d(l[i[2]], l[i[4]])) / (2 * d(l[i[0]], l[i[3]]));
+        }
+
+        async function predict() {
+            if (lastVideoTime !== video.currentTime) {
+                lastVideoTime = video.currentTime;
+                const result = faceLandmarker.detectForVideo(video, performance.now());
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (result.faceLandmarks?.[0]) {
+                    const l = result.faceLandmarks[0];
+                    drawPoints(l, L_IDX, "#00ffff");
+                    drawPoints(l, R_IDX, "#00ffff");
+
+                    const avgEAR = (getEAR(l, L_IDX) + getEAR(l, R_IDX)) / 2;
+                    const threshold = parseInt(frameRange.value);
+
+                    if (avgEAR < 0.22) {
+                        closedFrames++;
+                        if (closedFrames > threshold) {
+                            statusDiv.innerText = "!!! ALARM: MÜDIGKEIT !!!";
+                            statusDiv.className = "alarm";
+                            if (!alarmOsc) {
+                                alarmOsc = audioCtx.createOscillator();
+                                alarmOsc.connect(audioCtx.destination);
+                                alarmOsc.start();
+                            }
+                        }
+                    } else {
+                        closedFrames = 0;
+                        statusDiv.innerText = "Status: OK (EAR: " + avgEAR.toFixed(2) + ")";
+                        statusDiv.className = "";
+                        if (alarmOsc) { alarmOsc.stop(); alarmOsc = null; }
+                    }
+                } else {								
+									statusDiv.innerText = "No Eyes";
+									//once(() => playSuperLoudAlarm())();
+								}
+            }
+            requestAnimationFrame(predict);
+        }
+
+				function once(func) {
+						let hasRun = false;
+						let result;
+						
+						return function(...args) {
+								if (!hasRun) {
+										hasRun = true;
+										result = func.apply(this, args);
+								}
+								return result;
+						};
+				}
+
+				function playAlarm() {
+						const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+						console.log("AudioContext state:", audioCtx.state);
+						
+						const oscillator = audioCtx.createOscillator();
+						const gainNode = audioCtx.createGain();
+						
+						oscillator.connect(gainNode);
+						gainNode.connect(audioCtx.destination);
+						
+						oscillator.type = 'sine'; // sine, square, sawtooth, triangle
+						oscillator.frequency.value = 880; // 880Hz = A5 note
+						
+						gainNode.gain.value = 0.5;
+						
+						oscillator.start();
+						
+						// Stop after 1 second
+						setTimeout(() => {
+								oscillator.stop();
+								audioCtx.close();
+						}, 1000);
+				}
+
+				function playSuperLoudAlarm() {
+						const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+						audioCtx.resume();
+						
+						function playChord() {
+								const frequencies = [440, 554, 659, 880]; // A, C#, E, A
+								const oscillators = [];
+								const gainNode = audioCtx.createGain();
+								gainNode.gain.value = 0.3;
+								gainNode.connect(audioCtx.destination);
+								
+								frequencies.forEach(freq => {
+										const osc = audioCtx.createOscillator();
+										osc.type = 'square';
+										osc.frequency.value = freq;
+										osc.connect(gainNode);
+										osc.start();
+										oscillators.push(osc);
+								});
+								
+								// Stop after 0.3 seconds
+								setTimeout(() => {
+										oscillators.forEach(osc => osc.stop());
+										gainNode.disconnect();
+								}, 300);
+						}
+						
+						// Play chord repeatedly
+						playChord();
+						setTimeout(() => playChord(), 400);
+						setTimeout(() => playChord(), 800);
+						setTimeout(() => playChord(), 1200);
+						setTimeout(() => playChord(), 1600);
+						setTimeout(() => playChord(), 2000);
+						
+						// Close after 3 seconds
+						setTimeout(() => audioCtx.close(), 2500);
+				}
+
+        frameRange.oninput = () => frameVal.innerText = frameRange.value;
+        startBtn.onclick = init;
+    </script>
+</body>
+</html>
