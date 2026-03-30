@@ -150,46 +150,6 @@
 						audioCtx.close();
 				}, 1000);
 		}
-
-		function playSuperLoudAlarm() {
-				const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-				audioCtx.resume();
-				
-				function playChord() {
-						const frequencies = [440, 554, 659, 880]; // A, C#, E, A
-						const oscillators = [];
-						const gainNode = audioCtx.createGain();
-						gainNode.gain.value = 0.3;
-						gainNode.connect(audioCtx.destination);
-						
-						frequencies.forEach(freq => {
-								const osc = audioCtx.createOscillator();
-								osc.type = 'square';
-								osc.frequency.value = freq;
-								osc.connect(gainNode);
-								osc.start();
-								oscillators.push(osc);
-						});
-						
-						// Stop after 0.3 seconds
-						setTimeout(() => {
-								oscillators.forEach(osc => osc.stop());
-								gainNode.disconnect();
-						}, 300);
-				}
-				
-				// Play chord repeatedly
-				playChord();
-				setTimeout(() => playChord(), 400);
-				setTimeout(() => playChord(), 800);
-				setTimeout(() => playChord(), 1200);
-				setTimeout(() => playChord(), 1600);
-				setTimeout(() => playChord(), 2000);
-				
-				// Close after 3 seconds
-				setTimeout(() => audioCtx.close(), 2500);
-		}
-
         frameRange.oninput = () => frameVal.innerText = frameRange.value;
         startBtn.onclick = init;
     </script>
