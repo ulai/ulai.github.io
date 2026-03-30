@@ -49,6 +49,7 @@
 
         async function init() {
             startBtn.disabled = true;
+			await navigator.wakeLock.request('screen');
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 						const fileset = await FilesetResolver.forVisionTasks(
 								"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
@@ -113,88 +114,87 @@
                         if (alarmOsc) { alarmOsc.stop(); alarmOsc = null; }
                     }
                 } else {								
-									statusDiv.innerText = "No Eyes";
-									//once(() => playSuperLoudAlarm())();
-								}
+					statusDiv.innerText = "No Eyes";
+					//once(() => playSuperLoudAlarm())();
+				}
             }
             requestAnimationFrame(predict);
         }
+		function once(func) {
+				let hasRun = false;
+				let result;
+				
+				return function(...args) {
+						if (!hasRun) {
+								hasRun = true;
+								result = func.apply(this, args);
+						}
+						return result;
+				};
+		}
 
-				function once(func) {
-						let hasRun = false;
-						let result;
-						
-						return function(...args) {
-								if (!hasRun) {
-										hasRun = true;
-										result = func.apply(this, args);
-								}
-								return result;
-						};
-				}
+		function playAlarm() {
+				const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+				console.log("AudioContext state:", audioCtx.state);
+				
+				const oscillator = audioCtx.createOscillator();
+				const gainNode = audioCtx.createGain();
+				
+				oscillator.connect(gainNode);
+				gainNode.connect(audioCtx.destination);
+				
+				oscillator.type = 'sine'; // sine, square, sawtooth, triangle
+				oscillator.frequency.value = 880; // 880Hz = A5 note
+				
+				gainNode.gain.value = 0.5;
+				
+				oscillator.start();
+				
+				// Stop after 1 second
+				setTimeout(() => {
+						oscillator.stop();
+						audioCtx.close();
+				}, 1000);
+		}
 
-				function playAlarm() {
-						const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-						console.log("AudioContext state:", audioCtx.state);
-						
-						const oscillator = audioCtx.createOscillator();
+		function playSuperLoudAlarm() {
+				const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+				audioCtx.resume();
+				
+				function playChord() {
+						const frequencies = [440, 554, 659, 880]; // A, C#, E, A
+						const oscillators = [];
 						const gainNode = audioCtx.createGain();
-						
-						oscillator.connect(gainNode);
+						gainNode.gain.value = 0.3;
 						gainNode.connect(audioCtx.destination);
 						
-						oscillator.type = 'sine'; // sine, square, sawtooth, triangle
-						oscillator.frequency.value = 880; // 880Hz = A5 note
+						frequencies.forEach(freq => {
+								const osc = audioCtx.createOscillator();
+								osc.type = 'square';
+								osc.frequency.value = freq;
+								osc.connect(gainNode);
+								osc.start();
+								oscillators.push(osc);
+						});
 						
-						gainNode.gain.value = 0.5;
-						
-						oscillator.start();
-						
-						// Stop after 1 second
+						// Stop after 0.3 seconds
 						setTimeout(() => {
-								oscillator.stop();
-								audioCtx.close();
-						}, 1000);
+								oscillators.forEach(osc => osc.stop());
+								gainNode.disconnect();
+						}, 300);
 				}
-
-				function playSuperLoudAlarm() {
-						const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-						audioCtx.resume();
-						
-						function playChord() {
-								const frequencies = [440, 554, 659, 880]; // A, C#, E, A
-								const oscillators = [];
-								const gainNode = audioCtx.createGain();
-								gainNode.gain.value = 0.3;
-								gainNode.connect(audioCtx.destination);
-								
-								frequencies.forEach(freq => {
-										const osc = audioCtx.createOscillator();
-										osc.type = 'square';
-										osc.frequency.value = freq;
-										osc.connect(gainNode);
-										osc.start();
-										oscillators.push(osc);
-								});
-								
-								// Stop after 0.3 seconds
-								setTimeout(() => {
-										oscillators.forEach(osc => osc.stop());
-										gainNode.disconnect();
-								}, 300);
-						}
-						
-						// Play chord repeatedly
-						playChord();
-						setTimeout(() => playChord(), 400);
-						setTimeout(() => playChord(), 800);
-						setTimeout(() => playChord(), 1200);
-						setTimeout(() => playChord(), 1600);
-						setTimeout(() => playChord(), 2000);
-						
-						// Close after 3 seconds
-						setTimeout(() => audioCtx.close(), 2500);
-				}
+				
+				// Play chord repeatedly
+				playChord();
+				setTimeout(() => playChord(), 400);
+				setTimeout(() => playChord(), 800);
+				setTimeout(() => playChord(), 1200);
+				setTimeout(() => playChord(), 1600);
+				setTimeout(() => playChord(), 2000);
+				
+				// Close after 3 seconds
+				setTimeout(() => audioCtx.close(), 2500);
+		}
 
         frameRange.oninput = () => frameVal.innerText = frameRange.value;
         startBtn.onclick = init;
