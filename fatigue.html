@@ -101,7 +101,7 @@
                         if (closedFrames > threshold) {
                             statusDiv.innerText = "!!! ALARM: MÜDIGKEIT !!!";
                             statusDiv.className = "alarm";
-							once(() => playSuperLoudAlarm())();
+							once(() => playAlarm())();
                         }
                     } else {
                         closedFrames = 0;
