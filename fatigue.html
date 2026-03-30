@@ -101,21 +101,15 @@
                         if (closedFrames > threshold) {
                             statusDiv.innerText = "!!! ALARM: MÜDIGKEIT !!!";
                             statusDiv.className = "alarm";
-                            if (!alarmOsc) {
-                                alarmOsc = audioCtx.createOscillator();
-                                alarmOsc.connect(audioCtx.destination);
-                                alarmOsc.start();
-                            }
+							once(() => playSuperLoudAlarm())();
                         }
                     } else {
                         closedFrames = 0;
                         statusDiv.innerText = "Status: OK (EAR: " + avgEAR.toFixed(2) + ")";
                         statusDiv.className = "";
-                        if (alarmOsc) { alarmOsc.stop(); alarmOsc = null; }
                     }
                 } else {								
 					statusDiv.innerText = "No Eyes";
-					//once(() => playSuperLoudAlarm())();
 				}
             }
             requestAnimationFrame(predict);
